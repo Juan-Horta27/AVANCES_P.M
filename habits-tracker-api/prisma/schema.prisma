@@ -1,0 +1,109 @@
+// Esquema de la base de datos. Fuente: 03-api-and-data/data-model.md (revisado por ADR-008).
+// Convencion: los modelos y campos van en camelCase (como el JSON del API) y se mapean con
+// @map / @@map a tablas y columnas en snake_case, como exige el modelo fisico.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Roles del sistema (ADR-011): el paciente gestiona sus hábitos; el profesional consulta el progreso.
+enum Rol {
+  paciente
+  profesional
+
+  @@map("rol_usuario")
+}
+
+model Usuario {
+  id         Int      @id @default(autoincrement())
+  nombres    String   @db.VarChar(100)
+  apellidos  String?  @db.VarChar(100)
+  correo     String   @unique @db.VarChar(150)
+  /// Hash bcrypt; nunca se devuelve en una respuesta del API.
+  contrasena String   @db.VarChar(255)
+  edad       Int?
+  peso       Decimal? @db.Decimal(5, 2)
+  estatura   Decimal? @db.Decimal(3, 2)
+  rol        Rol      @default(paciente)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  habitos Habito[]
+
+  @@map("usuario")
+}
+
+model CategoriaHabito {
+  id          Int      @id @default(autoincrement())
+  nombre      String   @unique @db.VarChar(60)
+  descripcion String?
+  /// Emoji que representa la categoria (ADR-008, D-11).
+  icono       String?  @db.VarChar(50)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  habitos Habito[]
+
+  @@map("categoria_habito")
+}
+
+model Habito {
+  id                Int      @id @default(autoincrement())
+  usuarioId         Int      @map("usuario_id")
+  categoriaHabitoId Int      @map("categoria_habito_id")
+  nombre            String   @db.VarChar(100)
+  descripcion       String?
+  unidadMedida      String   @map("unidad_medida") @db.VarChar(30)
+  frecuencia        String   @default("diaria") @db.VarChar(20)
+  /// false = archivado (baja logica, ADR-008 D-10).
+  activo            Boolean  @default(true)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  usuario   Usuario         @relation(fields: [usuarioId], references: [id], onDelete: Restrict, map: "habito_usuario_fkey")
+  categoria CategoriaHabito @relation(fields: [categoriaHabitoId], references: [id], onDelete: Restrict, map: "habito_categoria_fkey")
+  metas     Meta[]
+  registros RegistroDiario[]
+
+  @@index([usuarioId, activo], map: "idx_habito_usuario_activo")
+  @@map("habito")
+}
+
+model Meta {
+  id            Int      @id @default(autoincrement())
+  habitoId      Int      @map("habito_id")
+  valorObjetivo Decimal  @map("valor_objetivo") @db.Decimal(8, 2)
+  descripcion   String?
+  activa        Boolean  @default(true)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  habito Habito @relation(fields: [habitoId], references: [id], onDelete: Cascade, map: "meta_habito_fkey")
+
+  @@index([habitoId, activa], map: "idx_meta_habito_activa")
+  @@map("meta")
+}
+
+model RegistroDiario {
+  id              Int      @id @default(autoincrement())
+  habitoId        Int      @map("habito_id")
+  /// Dia del calendario, sin hora (ADR-003).
+  fecha           DateTime @db.Date
+  valorRegistrado Decimal  @map("valor_registrado") @db.Decimal(8, 2)
+  /// Se calcula al crear el registro y queda congelado (ADR-008, D-18).
+  metaCumplida    Boolean  @default(false) @map("meta_cumplida")
+  notas           String?  @db.VarChar(500)
+  /// Clave de idempotencia generada por el cliente (ADR-008, D-17).
+  clienteId       String   @unique(map: "registro_diario_cliente_id_key") @map("cliente_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  habito Habito @relation(fields: [habitoId], references: [id], onDelete: Restrict, map: "registro_diario_habito_fkey")
+
+  @@unique([habitoId, fecha], map: "registro_diario_habito_fecha_key")
+  @@map("registro_diario")
+}

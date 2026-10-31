@@ -1,0 +1,967 @@
+{
+  "info": {
+    "name": "Healthy Habits Tracker — API",
+    "description": "Pruebas de habits-tracker-api (guía del proyecto de aula §6): login de los dos roles, 401 sin token, 403 con el rol equivocado, CRUD completo de un hábito, la regla de negocio (un registro por hábito y día) y el reporte del profesional. Usa los usuarios semilla de la migración 20261029050000_datos_semilla_por_rol. Se puede ejecutar varias veces seguidas: cada corrida crea su propio hábito y lo elimina al final.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "correoPaciente",
+      "value": "paciente@habitos.test"
+    },
+    {
+      "key": "contrasenaPaciente",
+      "value": "Paciente123"
+    },
+    {
+      "key": "correoProfesional",
+      "value": "profesional@habitos.test"
+    },
+    {
+      "key": "contrasenaProfesional",
+      "value": "Profesional123"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Autenticación",
+      "item": [
+        {
+          "name": "Login del paciente",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"correo\": \"{{correoPaciente}}\",\n  \"contrasena\": \"{{contrasenaPaciente}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('Devuelve un token, el rol paciente y ninguna contraseña', () => {",
+                  "  pm.expect(b.token).to.be.a('string');",
+                  "  pm.expect(b.usuario.rol).to.eql('paciente');",
+                  "  pm.expect(b.usuario).to.not.have.property('contrasena');",
+                  "});",
+                  "pm.collectionVariables.set('tokenPaciente', b.token);",
+                  "pm.collectionVariables.set('idPaciente', b.usuario.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login con contraseña incorrecta → 401",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"correo\": \"{{correoPaciente}}\",\n  \"contrasena\": \"Incorrecta9\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 401 INVALID_CREDENTIALS', () => {",
+                  "  pm.response.to.have.status(401);",
+                  "  pm.expect(pm.response.json().code).to.eql('INVALID_CREDENTIALS');",
+                  "});",
+                  "pm.test('El error tiene forma RFC 7807', () => {",
+                  "  pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json');",
+                  "  pm.expect(pm.response.json()).to.include.keys('title', 'status', 'detail', 'code');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login del profesional",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"correo\": \"{{correoProfesional}}\",\n  \"contrasena\": \"{{contrasenaProfesional}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 200 con el rol profesional', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().usuario.rol).to.eql('profesional');",
+                  "});",
+                  "pm.collectionVariables.set('tokenProfesional', pm.response.json().token);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Seguridad: 401 sin token y 403 con el rol equivocado",
+      "item": [
+        {
+          "name": "GET /habitos sin token → 401",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/habitos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "habitos"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 401 UNAUTHORIZED', () => {",
+                  "  pm.response.to.have.status(401);",
+                  "  pm.expect(pm.response.json().code).to.eql('UNAUTHORIZED');",
+                  "});",
+                  "pm.test('El error tiene forma RFC 7807', () => {",
+                  "  pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json');",
+                  "  pm.expect(pm.response.json()).to.include.keys('title', 'status', 'detail', 'code');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /habitos con el profesional → 403",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenProfesional}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/habitos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "habitos"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"categoriaHabitoId\": 1,\n  \"nombre\": \"No debería crearse\",\n  \"unidadMedida\": \"vasos\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 403 FORBIDDEN_ROLE', () => {",
+                  "  pm.response.to.have.status(403);",
+                  "  pm.expect(pm.response.json().code).to.eql('FORBIDDEN_ROLE');",
+                  "});",
+                  "pm.test('El error tiene forma RFC 7807', () => {",
+                  "  pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json');",
+                  "  pm.expect(pm.response.json()).to.include.keys('title', 'status', 'detail', 'code');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /usuarios con el paciente → 403",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenPaciente}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/usuarios",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "usuarios"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 403 FORBIDDEN_ROLE', () => {",
+                  "  pm.response.to.have.status(403);",
+                  "  pm.expect(pm.response.json().code).to.eql('FORBIDDEN_ROLE');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. CRUD de hábito (paciente)",
+      "item": [
+        {
+          "name": "Crear hábito",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenPaciente}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/habitos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "habitos"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"categoriaHabitoId\": 5,\n  \"nombre\": \"{{nombreHabito}}\",\n  \"descripcion\": \"Creado por la colección de Postman\",\n  \"unidadMedida\": \"paginas\",\n  \"metaInicial\": {\n    \"valorObjetivo\": 20,\n    \"descripcion\": \"20 páginas al día\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('nombreHabito', 'Leer ' + Date.now());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 201', () => pm.response.to.have.status(201));",
+                  "const b = pm.response.json();",
+                  "pm.test('Nace activo, diario y con su meta inicial', () => {",
+                  "  pm.expect(b.activo).to.eql(true);",
+                  "  pm.expect(b.frecuencia).to.eql('diaria');",
+                  "  pm.expect(b.metaActiva.valorObjetivo).to.eql(20);",
+                  "});",
+                  "pm.collectionVariables.set('idHabito', b.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Ver el hábito",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenPaciente}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/habitos/{{idHabito}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "habitos",
+                "{{idHabito}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 200 con el hábito creado', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().nombre).to.eql(pm.collectionVariables.get('nombreHabito'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Editar el hábito",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenPaciente}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/habitos/{{idHabito}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "habitos",
+                "{{idHabito}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"{{nombreHabito}} (editado)\",\n  \"unidadMedida\": \"páginas\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 200 con los cambios', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().unidadMedida).to.eql('páginas');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Listar hábitos",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenPaciente}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/habitos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "habitos"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 200 e incluye el hábito', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const ids = pm.response.json().map((h) => h.id);",
+                  "  pm.expect(ids).to.include(Number(pm.collectionVariables.get('idHabito')));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. Regla de negocio: un registro por hábito y día",
+      "item": [
+        {
+          "name": "Registrar hoy (cumple la meta)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenPaciente}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/registros",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registros"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"habitoId\": {{idHabito}},\n  \"fecha\": \"{{hoy}}\",\n  \"valorRegistrado\": 25,\n  \"clienteId\": \"{{clienteId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('hoy', new Date(Date.now() - 5 * 3600000).toISOString().slice(0, 10));",
+                  "pm.collectionVariables.set('clienteId', pm.variables.replaceIn('{{$guid}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 201 con la meta cumplida (25 >= 20)', () => {",
+                  "  pm.response.to.have.status(201);",
+                  "  pm.expect(pm.response.json().metaCumplida).to.eql(true);",
+                  "});",
+                  "pm.collectionVariables.set('idRegistro', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Registrar el mismo día otra vez → 409",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenPaciente}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/registros",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registros"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"habitoId\": {{idHabito}},\n  \"fecha\": \"{{hoy}}\",\n  \"valorRegistrado\": 5,\n  \"clienteId\": \"{{clienteId2}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('clienteId2', pm.variables.replaceIn('{{$guid}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 409 DUPLICATE_DAILY_LOG', () => {",
+                  "  pm.response.to.have.status(409);",
+                  "  pm.expect(pm.response.json().code).to.eql('DUPLICATE_DAILY_LOG');",
+                  "});",
+                  "pm.test('El error tiene forma RFC 7807', () => {",
+                  "  pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json');",
+                  "  pm.expect(pm.response.json()).to.include.keys('title', 'status', 'detail', 'code');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Editar el registro (ya no cumple)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenPaciente}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/registros/{{idRegistro}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registros",
+                "{{idRegistro}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"valorRegistrado\": 10,\n  \"notas\": \"Corregido desde Postman\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 200 y recalcula metaCumplida', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().metaCumplida).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5. Panel del profesional",
+      "item": [
+        {
+          "name": "Listar pacientes",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenProfesional}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/usuarios?rol=paciente",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "usuarios"
+              ],
+              "query": [
+                {
+                  "key": "rol",
+                  "value": "paciente"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 200 e incluye al paciente de prueba', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const correos = pm.response.json().map((u) => u.correo);",
+                  "  pm.expect(correos).to.include(pm.collectionVariables.get('correoPaciente'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Progreso del paciente (últimos 30 días)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenProfesional}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/reportes/progreso?usuarioId={{idPaciente}}&fechaInicio={{hace30}}&fechaFin={{hoy}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "reportes",
+                "progreso"
+              ],
+              "query": [
+                {
+                  "key": "usuarioId",
+                  "value": "{{idPaciente}}"
+                },
+                {
+                  "key": "fechaInicio",
+                  "value": "{{hace30}}"
+                },
+                {
+                  "key": "fechaFin",
+                  "value": "{{hoy}}"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('hace30', new Date(Date.now() - 30 * 86400000 - 5 * 3600000).toISOString().slice(0, 10));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 200 con la adherencia por hábito', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.habitos).to.be.an('array').that.is.not.empty;",
+                  "  pm.expect(b.habitos[0]).to.include.keys('diasEvaluados', 'diasCumplidos', 'porcentajeAdherencia', 'rachaMaxima');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "6. CRUD: eliminar (y dejar la base como estaba)",
+      "item": [
+        {
+          "name": "Eliminar el registro",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenPaciente}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/registros/{{idRegistro}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registros",
+                "{{idRegistro}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Eliminar el hábito",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenPaciente}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/habitos/{{idHabito}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "habitos",
+                "{{idHabito}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "El hábito ya no existe → 404",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenPaciente}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/habitos/{{idHabito}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "habitos",
+                "{{idHabito}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 404 HABIT_NOT_FOUND (se borró porque ya no tenía registros)', () => {",
+                  "  pm.response.to.have.status(404);",
+                  "  pm.expect(pm.response.json().code).to.eql('HABIT_NOT_FOUND');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

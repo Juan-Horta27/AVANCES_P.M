@@ -1,0 +1,69 @@
+# Orquestación de Healthy Habits Tracker: PostgreSQL 16 + API NestJS.
+# Espera esta estructura de carpetas (ver README.md, paso 2):
+#
+#   <carpeta-de-trabajo>/
+#   ├── habits-tracker-infra/   ← este repositorio (aquí se ejecuta docker compose)
+#   ├── habits-tracker-api/     ← la API: se construye desde su Dockerfile
+#   └── habits-tracker-app/     ← la app: se arranca aparte con npm (no va en contenedor)
+#
+# Uso:  docker compose up -d --build      (base de datos + API)
+# Las variables salen de .env (copia de .env.example). Este repositorio no contiene DDL:
+# el esquema y los datos semilla son migraciones del repositorio -api, que la API aplica al arrancar.
+
+services:
+  database:
+    image: postgres:16-alpine
+    container_name: habits-tracker-db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - pgdata_habits_tracker:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - habits-tracker-network
+
+  api:
+    build: ${API_PATH:-../habits-tracker-api}
+    container_name: habits-tracker-api
+    depends_on:
+      database:
+        condition: service_healthy
+    environment:
+      # Dentro de la red de Docker la base se llama "database", no "localhost".
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@database:5432/${POSTGRES_DB}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN}
+      ZONA_HORARIA: ${ZONA_HORARIA}
+      PORT: 3000
+    ports:
+      - "${API_PORT:-3000}:3000"
+    # Lista cuando responde: una ruta protegida sin token debe dar 401.
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:3000/api/v1/categorias').then(r=>process.exit(r.status===401?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    networks:
+      - habits-tracker-network
+
+volumes:
+  pgdata_habits_tracker:
+
+networks:
+  habits-tracker-network:
+    driver: bridge

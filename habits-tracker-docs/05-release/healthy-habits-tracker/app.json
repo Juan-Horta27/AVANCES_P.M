@@ -1,0 +1,27 @@
+{
+  "expo": {
+    "name": "Habitos Saludables",
+    "slug": "habitos-saludables",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "habitos",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0D1117",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#0D1117"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0D1117"
+      }
+    },
+    "web": {
+      "bundler": "metro"
+    }
+  }
+}
